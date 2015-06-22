@@ -88,7 +88,7 @@ describe "Module Tests", ->
         Q.delay(1850).then ->
           request.get "http://127.0.0.1:1240/v1/queue", {json: true}, (error, req, body) ->
             check done, ->
-              expect(isEmpty(body)).equal(true)
+              expect(isEmpty(body)).equal(true, "body is " + JSON.stringify(body))
 
   describe "check adding a preset", ->
 

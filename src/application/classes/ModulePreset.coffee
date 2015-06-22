@@ -49,6 +49,8 @@ class ModulePreset
       , ->
         deferred.resolve(fileContents)
       )
+    .catch (error) ->
+      logger.error error + error.stack
     deferred.promise
 
   # read available presets from zookeeper
@@ -140,6 +142,8 @@ class ModulePreset
             errors: errors
           )
       )
+    .catch (error) ->
+      logger.error error + error.stack
     deferred.promise
 
   # removes presets from zookeeper
@@ -182,9 +186,12 @@ class ModulePreset
       modulenames.push(modulename)
     async.each(modulenames,
       (module, done) =>
-        @getAllOfModule(module).then (modulepresets) ->
+        @getAllOfModule(module)
+        .then (modulepresets) ->
           presets[module] = modulepresets
           done()
+        .catch (error) ->
+          logger.error error + error.stack
     ,
       ->
         deferred.resolve(presets)
@@ -213,6 +220,8 @@ class ModulePreset
       , ->
         deferred.resolve(presets)
       )
+    .catch (error) ->
+      logger.error error + error.stack
     deferred.promise
 
 module.exports = ModulePreset

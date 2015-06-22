@@ -13,7 +13,6 @@ async = require("async")
 fs = require("fs")
 Q = require("q")
 zookeeper = require('node-zookeeper-client')
-
 logger = require("../classes/Logger")("ZookeeperHandler")
 
 # Wrapper for node-zookeeper-client module, extends original functionality with promises, namespaces and custom event-listeners
@@ -46,16 +45,20 @@ class ZookeeperHandler
     logger.debug("INFO", "Connect to \"" + process.env.MCONN_ZK_HOSTS + "\"")
     deferred = Q.defer()
     @client.connect()
-    setTimeout =>
+    Q.delay(10000).then =>
       if @client.state.name is "DISCONNECTED"
-        logger.error("Zookeeper is unreachable \"" + process.env.MCONN_ZK_HOSTS + "\"")
-    , 10000
-    deferred.resolve()
+        message = "Zookeeper is unreachable \"" + process.env.MCONN_ZK_HOSTS + "\""
+        logger.error(message)
+        deferred.reject(message)
+    @client.on "member_registered", ->
+      deferred.resolve()
     return deferred.promise
 
   # create an empty zookeeperPath if it not exists
+  # NEVER REJECTS
   #
   # @param [String] path of the zookeeper node
+  # @todo check if it's ok to never reject the promise
   #
   @createPathIfNotExist: (path) ->
     deferred = Q.defer()
@@ -71,19 +74,6 @@ class ZookeeperHandler
     .catch (error) ->
       logger.error("Error checking if path exists \"" + error + "\"")
       deferred.resolve()
-    deferred.promise
-
-  # get masterdata from zookeeper
-  #
-  # @return [Promise] resolves with masterdata
-  #
-  @getMaster: =>
-    logger.debug("INFO", "Fetching data from leading master")
-    deferred = Q.defer()
-    @getData("master").then (data) ->
-      deferred.resolve(data)
-    .catch (error) ->
-      deferred.reject(error)
     deferred.promise
 
   # set data of a node
@@ -125,33 +115,41 @@ class ZookeeperHandler
             data = ""
           deferred.resolve(data)
         catch error
-          logger.error(error)
-          deferred.reject(error)
+          message = "#{path} has no valid json-data"
+          logger.error(message)
+          deferred.reject(message)
     deferred.promise
 
   # create root node of zookeeper store, if it not exists
   #
   # @return [Promise]
   #
-  @createNamespace: ->
+  @createNamespace: (namespace = ZookeeperHandler.namespace()) ->
     logger.debug("INFO", "Create namespace if required")
     self = @
     deferred = Q.defer()
-    self.client.exists self.namespace(), (error, stat) ->
-      if error
-        logger.error("Create error on namespace \"" + error.toString() + "\"")
-        deferred.reject(error)
-      #if stat isnt false then namespace exists
-      if (stat)
-        deferred.resolve(true)
-      else
-        #create namespace
-        self.client.create self.namespace(), new Buffer(""), zookeeper.ACL.OPEN, zookeeper.CreateMode.PERSISTENT, (error) ->
-          if error
-            logger.error("Create error on namespace \"" + error.toString() + "\"")
-          else
-            logger.info("Namespace \"" + self.namespace() + "\" successfully created")
-          deferred.resolve()
+    try
+      self.client.exists namespace, (error, stat) ->
+        if error
+          logger.error("Create error on namespace \"" + error.toString() + "\"")
+          deferred.reject(error)
+        #if stat isnt false then namespace exists
+        if (stat)
+          deferred.resolve(true)
+        else
+          #create namespace
+          self.client.create namespace, new Buffer(""), zookeeper.ACL.OPEN, zookeeper.CreateMode.PERSISTENT, (error) ->
+            if error
+              message = "Create error on namespace \"" + error.toString() + "\": " + error
+              logger.error(message)
+              deferred.reject(message)
+            else
+              logger.info("Namespace \"" + namespace + "\" successfully created")
+              deferred.resolve()
+    catch error
+      console.log error
+      deferred.reject(error)
+
     return deferred.promise
 
   # create base structure
@@ -165,7 +163,8 @@ class ZookeeperHandler
     .then => @createPathIfNotExist("inventory")
     .then => @createPathIfNotExist("queue")
     .catch (error) ->
-      logger.info(error)
+      logger.error(error)
+      deferred.reject(error)
     .finally ->
       deferred.resolve()
     return deferred.promise
@@ -248,11 +247,15 @@ class ZookeeperHandler
   @checkIsMaster: =>
     logger.debug("INFO", "Check if the leading master is \"localhost\"")
     deferred = Q.defer()
-    @getMasterId().then (id) =>
+    @getMasterId()
+    .then (id) =>
       if id is @memberId
         deferred.resolve(true)
       else
         deferred.resolve(false)
+    .catch (error) ->
+      logger.error(error + error.stack)
+      deferred.reject(error)
     deferred.promise
 
   # get data of the active leading master
@@ -347,6 +350,8 @@ class ZookeeperHandler
     .then =>
       @watchLeader()
       @registerMember()
+    .catch (error) ->
+      logger.error(error)
 
   # handler on disconenct
   #
@@ -372,40 +377,38 @@ class ZookeeperHandler
     @client.on "connected", @connectedHandler
     @client.on "disconnected", @disconnectedHandler
 
-    # own events
-    @client.on "member_registered", ->
-      App = require("../App")
-      App.initModules()
-      .then ->
-        App.startWebserver()
+
 
   # create a new node on zookeeper under /leader as ephemeral to register this container as running origin server
   #
   # @return [Promise]
   #
   @registerMember: =>
-    logger.debug("INFO", "Register new server on node \"/leader\"")
-    deferred = Q.defer()
-    @serverdata = new Object()
-    #ip and port from where the docker-container or application is reachable FROM OUTSIDE
-    @serverdata.ip = process.env.MCONN_HOST
-    @serverdata.port = process.env.MCONN_PORT
-    @serverdata.serverurl = "http://" + @serverdata.ip + ":" + @serverdata.port
-    @servername = @serverdata.ip + "-" + @serverdata.port + "-" + require("os").hostname()
+    try
+      logger.debug("INFO", "Register new server on node \"/leader\"")
+      deferred = Q.defer()
+      @serverdata = new Object()
+      #ip and port from where the docker-container or application is reachable FROM OUTSIDE
+      @serverdata.ip = process.env.MCONN_HOST
+      @serverdata.port = process.env.MCONN_PORT
+      @serverdata.serverurl = "http://" + @serverdata.ip + ":" + @serverdata.port
+      @servername = @serverdata.ip + "-" + @serverdata.port + "-" + require("os").hostname()
 
-    transaction = @client.transaction()
-    transaction.create(@namespace() + "/leader/member_", new Buffer(JSON.stringify({@serverdata})), zookeeper.ACL.OPEN, zookeeper.CreateMode.EPHEMERAL_SEQUENTIAL)
-    transaction.commit (error, results) =>
-      if error
-        logger.error(error)
-        deferred.reject(error)
-      else
-        unless results[0]?.path? and results[0].path.split("_")[1]? then logger.error("error on member-registration: could not fetch created memberid")
+      transaction = @client.transaction()
+      transaction.create(@namespace() + "/leader/member_", new Buffer(JSON.stringify({@serverdata})), zookeeper.ACL.OPEN, zookeeper.CreateMode.EPHEMERAL_SEQUENTIAL)
+      transaction.commit (error, results) =>
+        if error
+          logger.error(error)
+          deferred.reject(error)
         else
-          @memberId = results[0].path.split("_")[1]
-          logger.info("New leading master generated with id \"#{@memberId}\"")
-          @client.emit "member_registered"
-        deferred.resolve()
+          unless results[0]?.path? and results[0].path.split("_")[1]? then logger.error("error on member-registration: could not fetch created memberid")
+          else
+            @memberId = results[0].path.split("_")[1]
+            logger.info("New leading master generated with id \"#{@memberId}\"")
+            @client.emit "member_registered"
+          deferred.resolve()
+    catch error
+      logger.log error + error.stack
     deferred.promise
 
   # watch /leader node for changes and add event, if change detected

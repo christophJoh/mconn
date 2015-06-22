@@ -75,10 +75,13 @@ router.get "/v1/ping", (req, res) ->
 # POST /v1/exit/leader -> Kill the leading master
 router.post "/v1/exit/leader", (req, res) ->
   ZookeeperHandler = require("../../classes/ZookeeperHandler")
-  ZookeeperHandler.getMasterData().then (masterdata) ->
+  ZookeeperHandler.getMasterData()
+  .then (masterdata) ->
     request = require("request")
     request.post(masterdata.serverdata.serverurl + "/v1/exit/node")
     res.end()
+  .catch (error) ->
+    logger.error error + error.stack
 
 # POST /v1/exit/node -> Kill the requested instance
 router.post "/v1/exit/node", (req, res) ->

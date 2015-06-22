@@ -54,7 +54,8 @@ class Test extends Module
 
   on_TASK_RUNNING: (taskData, modulePreset, callback) ->
     delay = if process.env.MCONN_MODULE_TEST_DELAY? then process.env.MCONN_MODULE_TEST_DELAY else 250
-    Q.delay(delay).then =>
+    Q.delay(delay)
+    .then =>
       path = taskData.getData().taskId
       customData = "test"
       @addToZKInventory(path, customData, taskData)
@@ -64,7 +65,8 @@ class Test extends Module
         @updateInventoryOnGui()
       .catch (error) =>
         @logger.error error
-
+    .catch (error) =>
+      @logger.error error
   on_TASK_FAILED: (taskData, modulePreset, callback) ->
     delay = if process.env.MCONN_MODULE_TEST_DELAY? then process.env.MCONN_MODULE_TEST_DELAY else 250
     Q.delay(delay).then =>

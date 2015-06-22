@@ -60,8 +60,12 @@ class Module
     else unless process.env.MCONN_MARATHON_HOSTS
       logger.error("\"MCONN_MARATHON_HOSTS\" environment is missing, sync process will not work")
     else
-      Q.delay(@syncinterval()).then =>
+      Q.delay(@syncinterval())
+      .then =>
         @startSyncInterval()
+      .catch (error) =>
+        @logger.error error + error.stack
+
 
   # sync module's inventory with marathon's inventory
   #
@@ -87,8 +91,11 @@ class Module
   #
   startSyncInterval: ->
     @doSync().finally =>
-      Q.delay(@syncinterval()).then =>
+      Q.delay(@syncinterval())
+      .then =>
         @startSyncInterval()
+      .catch (error) =>
+        @logger.error error + error.stack
 
   # get Inventory from marathon
   #
@@ -162,11 +169,14 @@ class Module
   presetExistsInModule: (appId) ->
     deferred = Q.defer()
     ModulePreset = require("./ModulePreset")
-    ModulePreset.getAllOfModule(@name).then (presets) ->
+    ModulePreset.getAllOfModule(@name)
+    .then (presets) ->
       moduleHasPreset = false
       for preset in presets
         if preset.appId is appId then moduleHasPreset = true
       deferred.resolve(moduleHasPreset)
+    .catch (error) =>
+      @logger.error error + error.stack
     deferred.promise
 
   # get wrong tasks, that are missing on marathon inventory, but exist on local inventory
@@ -186,13 +196,16 @@ class Module
           @logger.info "Task #{taskData.getData().taskId} does not have to be cleaned up, since it already exists in active queue"
           done()
         else
-          @presetExistsInModule(taskData.getData().appId).then (exists) =>
+          @presetExistsInModule(taskData.getData().appId)
+          .then (exists) =>
             unless exists
               @logger.debug("INFO","getWrongTasks: Ignoring task #{taskData.getData().appId}, preset not found for module #{@name}")
             else
               taskData.cleanup = true
               wrong.push(taskData)
             done()
+          .catch (error) =>
+            @logger.error error + error.stack
       else
         done()
     , =>
@@ -217,13 +230,16 @@ class Module
           @logger.info "Task #{taskData.getData().taskId} does not have to be cleaned up, since it already exists in active queue"
           done()
         else
-          @presetExistsInModule(taskData.getData().appId).then (exists) =>
+          @presetExistsInModule(taskData.getData().appId)
+          .then (exists) =>
             unless exists
               @logger.debug("INFO","Ignoring task #{taskData.getData().appId}, preset not found for module #{@name}")
             else
               taskData.cleanup = true
               missing.push(taskData)
             done()
+          .catch (error) =>
+            @logger.error error + error.stack
       else
         done()
     , =>
@@ -321,6 +337,8 @@ class Module
     .then (inventory) =>
       unless socket then socket = require("../App").app.get("io").of("/#{@name}")
       socket.emit("update#{@name}Inventory", inventory)
+    .catch (error) =>
+      @logger.error error + error.stack
 
   # get Inventory of module
   #
@@ -348,6 +366,8 @@ class Module
       , ->
         deferred.resolve(inventory)
       )
+    .catch (error) =>
+      @logger.error error + error.stack
     deferred.promise
 
   # get path of template
@@ -417,12 +437,15 @@ class Module
           cache: cache
         )
       )
-    @getWebsocketHandler().then (io) =>
+    @getWebsocketHandler()
+    .then (io) =>
       if io
         nsp = io.of("/" + @name)
         nsp.on("connection", (socket) =>
           @updatePresetsOnGui(socket)
         )
+    .catch (error) =>
+      @logger.error error + error.stack
     # set route for queue
     if moduleRouter
       moduleRouter.get(@createModuleRoute("queue"), (req, res) =>
@@ -766,9 +789,11 @@ class Module
       logger.error error, error.stack
       deferred.resolve()
 
-    deferred.promise.then =>
+    deferred.promise
+    .then =>
       @allModulesLoadedDeferred.resolve()
-
+    .catch (error) =>
+      @logger.error error + error.stack
     deferred.promise
 
   # load the preset from zookeeper for this application

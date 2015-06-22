@@ -79,7 +79,6 @@ class QueueManager
             logger.debug("INFO","Resolving promise of task " + taskData.getData().taskId + "_" + taskData.getData().taskStatus + " for task #{name}")
             deferred.resolve()
           )
-
       # add task to main queue
       @queue.push(
         task: taskData
@@ -90,7 +89,6 @@ class QueueManager
         @zookeeperHandler().remove("queue/" + taskData.getData().taskId + "_" + taskData.getData().taskStatus)
         .then  =>
           logger.debug("INFO", taskData.getData().taskId + " finished, cleaning up")
-
           for name, m of Module.modules
             do (name) =>
               @zookeeperHandler().remove("modules/#{name}/queue/" + taskData.getData().taskId + "_" + taskData.getData().taskStatus)
