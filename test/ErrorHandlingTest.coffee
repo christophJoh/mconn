@@ -24,7 +24,7 @@ check = ( done, f )  ->
 #set env defaults
 require("../src/application/App").checkEnvironment()
 
-describe.only "ErrorHandling", ->
+describe "ErrorHandling", ->
 
   describe "ZookeeperHandler", ->
     ZookeeperHandler = null

@@ -387,27 +387,37 @@ class ZookeeperHandler
     try
       logger.debug("INFO", "Register new server on node \"/leader\"")
       deferred = Q.defer()
+      console.log 1
       @serverdata = new Object()
       #ip and port from where the docker-container or application is reachable FROM OUTSIDE
       @serverdata.ip = process.env.MCONN_HOST
       @serverdata.port = process.env.MCONN_PORT
       @serverdata.serverurl = "http://" + @serverdata.ip + ":" + @serverdata.port
       @servername = @serverdata.ip + "-" + @serverdata.port + "-" + require("os").hostname()
-
+      console.log 2
       transaction = @client.transaction()
+      console.log 3
       transaction.create(@namespace() + "/leader/member_", new Buffer(JSON.stringify({@serverdata})), zookeeper.ACL.OPEN, zookeeper.CreateMode.EPHEMERAL_SEQUENTIAL)
+      console.log 4
       transaction.commit (error, results) =>
         if error
+          console.log 5
           logger.error(error)
           deferred.reject(error)
         else
-          unless results[0]?.path? and results[0].path.split("_")[1]? then logger.error("error on member-registration: could not fetch created memberid")
+          console.log 6
+          unless results[0]?.path? and results[0].path.split("_")[1]?
+            console.log 7
+            logger.error("error on member-registration: could not fetch created memberid")
           else
+            console.log 8
             @memberId = results[0].path.split("_")[1]
             logger.info("New leading master generated with id \"#{@memberId}\"")
             @client.emit "member_registered"
+            console.log 9
           deferred.resolve()
     catch error
+      console.log 10
       logger.log error + error.stack
     deferred.promise
 
