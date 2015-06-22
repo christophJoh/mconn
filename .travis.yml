@@ -1,8 +1,19 @@
 language: node_js
+env:
+  - MCONN_PATH=/home/travis/build/christophJoh/travis-testing
+  - MCONN_ZK_SESSION_TIMEOUT=10000
 before_script:
+  - sudo apt-get update -qq
+  - sudo apt-get install -y zookeeper
   - npm install -g coffee-script coffeelint grunt-cli bower mocha chai
   - bower install --allow-root
 node_js:
   - "0.12"
-script: 
-  - grunt build
+script:
+  - sudo /usr/share/zookeeper/bin/zkServer.sh start
+  - export NODE_ENV=development
+  - grunt test-cli
+after_failure:
+  - cat /var/log/zookeeper/zookeeper.log
+  - sudo /usr/share/zookeeper/bin/zkCli.sh ls /mconn-dev
+  - sudo /usr/share/zookeeper/bin/zkCli.sh ls /mconn-dev-module
